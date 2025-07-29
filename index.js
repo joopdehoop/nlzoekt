@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const cron = require('node-cron');
+const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const db = require('./db/init');
 const importFeeds = require('./importer');
@@ -32,7 +33,7 @@ function requireAuth(req, res, next) {
   const username = credentials[0];
   const password = credentials[1];
   
-  if (username === 'admin' && password === process.env.ADMIN_PASSWORD) {
+  if (username === 'admin' && process.env.ADMIN_PASSWORD_HASH && bcrypt.compareSync(password, process.env.ADMIN_PASSWORD_HASH)) {
     next();
   } else {
     res.setHeader('WWW-Authenticate', 'Basic realm="Admin Area"');
