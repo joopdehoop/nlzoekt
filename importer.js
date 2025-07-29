@@ -40,7 +40,7 @@ async function importFeeds(force = false) {
             region: feedConfig.region
           };
           
-          const wasAdded = db.addArticle(article);
+          const wasAdded = await db.addArticle(article);
           if (wasAdded) {
             imported++;
             totalImported++;
@@ -64,7 +64,7 @@ async function importFeeds(force = false) {
     
     console.log(`Import completed. Total new articles: ${totalImported}`);
     
-    const stats = db.getStats();
+    const stats = await db.getStats();
     console.log(`Database now contains ${stats.totalArticles} articles total`);
     
   } catch (error) {

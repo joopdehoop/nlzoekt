@@ -16,7 +16,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-db.init();
+// Initialize database
+(async () => {
+  await db.init();
+})();
 
 function requireAuth(req, res, next) {
   const auth = req.headers.authorization;
@@ -250,7 +253,7 @@ app.get('/', async (req, res) => {
       trendingArticles = await db.getTrendingArticles();
       articles = trendingArticles.map(ta => ta.article);
     } else {
-      articles = db.searchArticles(query, filters);
+      articles = await db.searchArticles(query, filters);
     }
     
     const stats = await db.getStats();
@@ -290,9 +293,85 @@ app.get('/stats', async (req, res) => {
   }
 });
 
+// Check if URL is archived in Wayback Machine
+app.get('/archive/check/:url', async (req, res) => {
+  try {
+    const url = decodeURIComponent(req.params.url);
+    const checkResponse = await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(url)}`);
+    const checkData = await checkResponse.json();
+    
+    if (checkData.archived_snapshots?.closest?.available) {
+      res.json({ 
+        archived: true, 
+        archiveUrl: checkData.archived_snapshots.closest.url 
+      });
+    } else {
+      res.json({ archived: false });
+    }
+  } catch (error) {
+    console.error('Archive check error:', error);
+    res.status(500).json({ error: 'Failed to check archive status' });
+  }
+});
+
+// Archive URL using Wayback Machine SavePageNow API
+app.post('/archive', async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+
+    // Use SavePageNow API with proper headers
+    const archiveResponse = await fetch('https://web.archive.org/save/' + encodeURIComponent(url), {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'NL-Zoekt-Archiver/1.0'
+      }
+    });
+
+    if (archiveResponse.ok || archiveResponse.status === 302) {
+      // Wait a moment then check for the archived version
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const checkResponse = await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(url)}`);
+      const checkData = await checkResponse.json();
+      
+      if (checkData.archived_snapshots?.closest?.available) {
+        res.json({ 
+          success: true, 
+          archiveUrl: checkData.archived_snapshots.closest.url 
+        });
+      } else {
+        // Fallback to search URL if specific archive not found
+        res.json({ 
+          success: true, 
+          archiveUrl: `https://web.archive.org/web/*/${url}` 
+        });
+      }
+    } else {
+      throw new Error(`Archive request failed with status: ${archiveResponse.status}`);
+    }
+  } catch (error) {
+    console.error('Archive error:', error);
+    res.status(500).json({ error: 'Failed to archive URL' });
+  }
+});
+
 cron.schedule('*/30 * * * *', () => {
   console.log('Starting scheduled feed import...');
   importFeeds();
+});
+
+// Daily cleanup of old articles at 2 AM
+cron.schedule('0 2 * * *', async () => {
+  console.log('Starting daily cleanup of articles older than 31 days...');
+  try {
+    const { cleanupOldArticles } = require('./db/init');
+    await cleanupOldArticles();
+  } catch (error) {
+    console.error('Error during daily cleanup:', error);
+  }
 });
 
 app.listen(PORT, '0.0.0.0', () => {

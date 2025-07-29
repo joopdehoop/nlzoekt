@@ -1,4 +1,4 @@
-CREATE TABLE articles (
+CREATE TABLE IF NOT EXISTS articles (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   title TEXT,
   content TEXT,
@@ -8,8 +8,8 @@ CREATE TABLE articles (
   region TEXT
 );
 
-CREATE INDEX idx_articles_title ON articles(title);
-CREATE INDEX idx_articles_content ON articles(content);
-CREATE INDEX idx_articles_medium ON articles(medium);
-CREATE INDEX idx_articles_region ON articles(region);
-CREATE INDEX idx_articles_pubdate ON articles(pubDate);
+CREATE INDEX IF NOT EXISTS idx_articles_title ON articles(title);
+CREATE INDEX IF NOT EXISTS idx_articles_content ON articles(content);
+CREATE INDEX IF NOT EXISTS idx_articles_medium ON articles(medium);
+CREATE INDEX IF NOT EXISTS idx_articles_region ON articles(region);
+CREATE INDEX IF NOT EXISTS idx_articles_pubdate ON articles(pubDate);
