@@ -76,7 +76,7 @@
                         <div class="article-meta">
                             <span class="medium"><%= trendingItem.article.medium %></span>
                             <span class="region"><%= trendingItem.article.region %></span>
-							<span class="article-links"><a href="https://archive.ph/<%= encodeURIComponent(trendingItem.article.link) %>" target="_blank" class="archive-link">📁 Archief</a></span>
+							<span class="article-links"><a href="#" onclick="openArchive('<%= trendingItem.article.link %>', this); return false;" class="archive-link" data-url="<%= trendingItem.article.link %>">📁 Archief</a></span>
                             <span class="date"><%= new Date(trendingItem.article.pubDate).toLocaleDateString('nl-NL', {day: 'numeric', month: 'long', year: 'numeric'}) %> - <%= new Date(trendingItem.article.pubDate).toLocaleTimeString('nl-NL', {hour: '2-digit', minute: '2-digit'}) %></span>
                         </div>
                         <h2><a href="<%= trendingItem.article.link %>" target="_blank"><%= trendingItem.article.title %></a></h2>
@@ -91,7 +91,7 @@
                         <div class="article-meta">
                             <span class="medium"><%= article.medium %></span>
                             <span class="region"><%= article.region %></span>
-							<span class="article-links"><a href="https://archive.ph/<%= encodeURIComponent(article.link) %>" target="_blank" class="archive-link">📁 Archief</a></span>
+							<span class="article-links"><a href="#" onclick="openArchive('<%= article.link %>', this); return false;" class="archive-link" data-url="<%= article.link %>">📁 Archief</a></span>
                             <span class="date"><%= new Date(article.pubDate).toLocaleDateString('nl-NL', {day: 'numeric', month: 'long', year: 'numeric'}) %> - <%= new Date(article.pubDate).toLocaleTimeString('nl-NL', {hour: '2-digit', minute: '2-digit'}) %></span>
                         </div>
                         <h2><a href="<%= article.link %>" target="_blank"><%= article.title %></a></h2>
@@ -111,5 +111,111 @@
             </p>
         </footer>
     </div>
+
+    <script>
+    const archiveCache = new Map();
+
+    async function checkArchiveStatus(url) {
+        try {
+            const response = await fetch(`/archive/check/${encodeURIComponent(url)}`);
+            const result = await response.json();
+            return result;
+        } catch (error) {
+            console.error('Archive check error:', error);
+            return { archived: false };
+        }
+    }
+
+    async function archiveUrl(url) {
+        try {
+            const response = await fetch('/archive', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ url: url })
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Archive error:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    async function openArchive(url, linkElement) {
+        const originalText = linkElement.textContent;
+        linkElement.textContent = '⏳ Zoeken...';
+        linkElement.style.pointerEvents = 'none';
+        
+        try {
+            let archiveData = archiveCache.get(url);
+            
+            if (!archiveData) {
+                archiveData = await checkArchiveStatus(url);
+                archiveCache.set(url, archiveData);
+            }
+            
+            if (archiveData.archived) {
+                window.open(archiveData.archiveUrl, '_blank');
+                linkElement.textContent = '📁 Archief';
+            } else {
+                // Try to search on Wayback Machine
+                window.open(`https://web.archive.org/web/*/${url}`, '_blank');
+                linkElement.textContent = '📁 Archief (zoeken)';
+            }
+        } catch (error) {
+            console.error('Open archive error:', error);
+            linkElement.textContent = '❌ Fout';
+            setTimeout(() => {
+                linkElement.textContent = originalText;
+            }, 3000);
+        }
+        
+        linkElement.style.pointerEvents = 'auto';
+    }
+
+    // Auto-archive trending articles on page load and update button status
+    document.addEventListener('DOMContentLoaded', async function() {
+        const trendingArticles = document.querySelectorAll('.trending-article');
+        
+        for (const article of trendingArticles) {
+            const articleLink = article.querySelector('h2 a');
+            const archiveButton = article.querySelector('.archive-link');
+            
+            if (articleLink && archiveButton) {
+                const url = articleLink.href;
+                
+                try {
+                    // Check if already archived
+                    const archiveStatus = await checkArchiveStatus(url);
+                    archiveCache.set(url, archiveStatus);
+                    
+                    if (archiveStatus.archived) {
+                        archiveButton.textContent = '📁 Archief ✓';
+                        archiveButton.style.color = '#28a745';
+                    } else {
+                        // Try to archive it in the background
+                        archiveButton.textContent = '📁 Archiveren...';
+                        archiveButton.style.color = '#ffc107';
+                        
+                        const archiveResult = await archiveUrl(url);
+                        if (archiveResult.success) {
+                            archiveButton.textContent = '📁 Archief ✓';
+                            archiveButton.style.color = '#28a745';
+                            // Update cache with new archive URL
+                            archiveCache.set(url, { archived: true, archiveUrl: archiveResult.archiveUrl });
+                        } else {
+                            archiveButton.textContent = '📁 Archief';
+                            archiveButton.style.color = '';
+                        }
+                    }
+                } catch (error) {
+                    console.log('Background archive failed for:', url, error);
+                    archiveButton.textContent = '📁 Archief';
+                }
+            }
+        }
+    });
+    </script>
 </body>
 </html>

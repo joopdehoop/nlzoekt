@@ -1,8 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const natural = require('natural');
-const OpenAI = require('openai');
 const sqlite3 = require('sqlite3').verbose();
+const OpenAI = require('openai');
 const settings = require('../settings');
 
 // Load environment variables
@@ -18,41 +17,9 @@ if (process.env.OPENAI_API_KEY) {
 
 const DB_FILE = path.join(__dirname, 'articles.db');
 const SCHEMA_FILE = path.join(__dirname, 'schema.sql');
+const KEYWORDS_CACHE_FILE = path.join(__dirname, 'trending_keywords_cache.json');
 
 let db = null;
-let cachedTrendingKeywords = [];
-let lastOpenAICallDate = null;
-
-function saveMetadata() {
-  try {
-    const metadataFile = path.join(__dirname, 'metadata.json');
-    const data = {
-      cachedTrendingKeywords: cachedTrendingKeywords,
-      lastOpenAICallDate: lastOpenAICallDate
-    };
-    fs.writeFileSync(metadataFile, JSON.stringify(data, null, 2), 'utf8');
-  } catch (error) {
-    console.error('Error saving metadata:', error);
-  }
-}
-
-function loadMetadata() {
-  try {
-    const metadataFile = path.join(__dirname, 'metadata.json');
-    if (fs.existsSync(metadataFile)) {
-      const data = JSON.parse(fs.readFileSync(metadataFile, 'utf8'));
-      cachedTrendingKeywords = data.cachedTrendingKeywords || [];
-      lastOpenAICallDate = data.lastOpenAICallDate || null;
-      if (cachedTrendingKeywords.length > 0) {
-        console.log(`Cached trending keywords loaded: ${cachedTrendingKeywords.join(', ')}`);
-      }
-    }
-  } catch (error) {
-    console.error('Error loading metadata:', error);
-    cachedTrendingKeywords = [];
-    lastOpenAICallDate = null;
-  }
-}
 
 function initializeDatabase() {
   return new Promise((resolve, reject) => {
@@ -114,10 +81,42 @@ function cleanupOldArticles() {
   });
 }
 
+async function generateKeywordForArticle(title, content) {
+  if (!openai || !process.env.OPENAI_API_KEY) {
+    console.log('OpenAI not configured, skipping keyword generation');
+    return null;
+  }
+
+  try {
+    const prompt = `Summarize this Dutch news article in maximum 3 words (preferably 1-2 words). Return only the keyword/phrase, nothing else:
+
+Title: ${title}
+Content: ${content}`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 10
+    });
+
+    const keyword = completion.choices[0].message.content.trim();
+    console.log(`Generated keyword "${keyword}" for article: ${title.substring(0, 50)}...`);
+    return keyword;
+  } catch (error) {
+    console.error('Error generating keyword:', error);
+    return null;
+  }
+}
+
 async function init() {
   try {
     await initializeDatabase();
-    loadMetadata();
     await cleanupOldArticles();
     console.log('Database initialized with SQLite storage');
   } catch (error) {
@@ -126,33 +125,58 @@ async function init() {
   }
 }
 
-function addArticle(article) {
-  return new Promise((resolve, reject) => {
-    const stmt = db.prepare(`
-      INSERT OR IGNORE INTO articles (title, content, link, pubDate, medium, region)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    
-    stmt.run([
-      article.title || '',
-      article.content || article.contentSnippet || '',
-      article.link,
-      article.pubDate,
-      article.medium,
-      article.region
-    ], function(err) {
-      if (err) {
-        console.error('Error adding article:', err);
-        reject(err);
-        return;
-      }
-      
-      // Return true if a new row was inserted, false if it already existed
-      const wasAdded = this.changes > 0;
-      resolve(wasAdded);
-    });
-    
-    stmt.finalize();
+async function addArticle(article) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Check if article already exists by URL
+      db.get('SELECT id, keyword FROM articles WHERE link = ?', [article.link], async (err, existingArticle) => {
+        if (err) {
+          console.error('Error checking existing article:', err);
+          reject(err);
+          return;
+        }
+
+        if (existingArticle) {
+          // Article already exists, don't add again
+          resolve(false);
+          return;
+        }
+
+        // Generate keyword for new article
+        let keyword = null;
+        if (openai && process.env.OPENAI_API_KEY) {
+          keyword = await generateKeywordForArticle(article.title || '', article.content || article.contentSnippet || '');
+        }
+
+        const stmt = db.prepare(`
+          INSERT INTO articles (title, content, link, pubDate, medium, region, keyword)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        
+        stmt.run([
+          article.title || '',
+          article.content || article.contentSnippet || '',
+          article.link,
+          article.pubDate,
+          article.medium,
+          article.region,
+          keyword
+        ], function(err) {
+          if (err) {
+            console.error('Error adding article:', err);
+            reject(err);
+            return;
+          }
+          
+          resolve(true);
+        });
+        
+        stmt.finalize();
+      });
+    } catch (error) {
+      console.error('Error in addArticle:', error);
+      reject(error);
+    }
   });
 }
 
@@ -206,240 +230,215 @@ function searchArticles(query, filters = {}) {
   });
 }
 
-function getTop100Keywords() {
+async function generateTrendingKeywords() {
+  if (!openai || !process.env.OPENAI_API_KEY) {
+    console.log('OpenAI not configured, cannot get trending keywords');
+    return [];
+  }
+
   return new Promise((resolve, reject) => {
-    // Get articles from today (last 24 hours)
-    const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    
-    db.all('SELECT title, content FROM articles WHERE datetime(pubDate) >= datetime(?)', [yesterday.toISOString()], (err, rows) => {
+    // Get all keywords from articles in the last 24 hours
+    db.all('SELECT keyword FROM articles WHERE keyword IS NOT NULL AND pubDate >= datetime(\'now\', \'-1 day\')', async (err, rows) => {
       if (err) {
-        console.error('Error getting today\'s articles:', err);
+        console.error('Error getting keywords from last 24h:', err);
         reject(err);
         return;
       }
       
       if (rows.length === 0) {
-        console.log('No articles from today found for trending analysis');
+        console.log('No keywords found from last 24 hours');
         resolve([]);
         return;
       }
-      
-      console.log(`Analyzing ${rows.length} articles from today`);
-      
-      // Load Dutch stopwords from file
-      let dutchStopwords = new Set();
+
+      const keywords = rows.map(row => row.keyword);
+      console.log(`Found ${keywords.length} keywords from last 24h:`, keywords);
+
       try {
-        const stopwordsPath = path.join(__dirname, '..', 'dutch-stopwords.txt');
-        const stopwordsContent = fs.readFileSync(stopwordsPath, 'utf8');
-        const stopwordsList = stopwordsContent.split('\n').map(word => word.trim()).filter(word => word.length > 0);
-        dutchStopwords = new Set(stopwordsList);
-      } catch (error) {
-        console.error('Error loading Dutch stopwords file:', error);
-        // Fallback to a minimal set of Dutch stopwords
-        dutchStopwords = new Set(['de', 'het', 'een', 'en', 'van', 'te', 'dat', 'die', 'in', 'op', 'voor', 'met', 'als', 'aan', 'bij', 'om', 'ook', 'zijn', 'hebben', 'er', 'naar', 'maar', 'over', 'uit', 'dan', 'onder', 'tegen', 'na', 'door', 'worden', 'deze', 'wel', 'nog', 'zou', 'wat', 'waar', 'wie', 'toen', 'dus', 'hier', 'alle', 'geen', 'kan', 'veel', 'meer', 'nu', 'zo', 'dit', 'hij', 'zij', 'zich', 'hun', 'haar', 'hem', 'ons', 'mij', 'ik', 'wij', 'u', 'was', 'waren', 'is', 'ben', 'bent', 'heeft', 'had', 'hadden', 'heb', 'hebt', 'niet']);
-      }
-      
-      // Count word frequencies across all today's articles
-      const wordFreq = {};
-      
-      rows.forEach(article => {
-        const text = (article.title + ' ' + (article.content || '')).toLowerCase();
+        // Get prompts from settings
+        const currentSettings = settings.getSettings();
+        const systemPrompt = currentSettings.openaiPrompts?.systemPrompt || "You are an expert news analyst. You will be given a list of keywords from Dutch news articles published in the last 24 hours. Select the 5 most newsworthy and diverse keywords that represent important trending topics. Return the selected keywords in the required JSON format.";
+        const userPromptTemplate = currentSettings.openaiPrompts?.userPrompt || "From this list of keywords from Dutch news in the last 24 hours, select the 5 most newsworthy and diverse keywords that represent important trending topics:\n\n{words}\n\nSelect the most relevant trending keywords.";
         
-        // Tokenize and filter - include all Dutch special characters
-        const words = text.match(/\b[a-zA-ZàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿĀāĂăĄąĆćĈĉĊċČčĎďĐđĒēĔĕĖėĘęĚěĜĝĞğĠġĢģĤĥĦħĨĩĪīĬĭĮįİıĲĳĴĵĶķĸĹĺĻļĽľĿŀŁłŃńŅņŇňŉŊŋŌōŎŏŐőŒœŔŕŖŗŘřŚśŜŝŞşŠšŢţŤťŦŧŨũŪūŬŭŮůŰűŲųŴŵŶŷŸŹźŻżŽž\-]{3,}\b/g) || [];
-        
-        words.forEach(word => {
-          const cleanWord = word.toLowerCase();
-          if (!dutchStopwords.has(cleanWord)) {
-            wordFreq[cleanWord] = (wordFreq[cleanWord] || 0) + 1;
+        // Replace placeholders in user prompt
+        const userPrompt = userPromptTemplate
+          .replace('{limit}', '5')
+          .replace('{words}', keywords.join(', '));
+
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: systemPrompt
+            },
+            {
+              role: "user", 
+              content: userPrompt
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 200,
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "trending_keywords",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  keywords: {
+                    type: "array",
+                    items: {
+                      type: "string"
+                    },
+                    maxItems: 10,
+                    minItems: 1
+                  }
+                },
+                required: ["keywords"],
+                additionalProperties: false
+              }
+            }
           }
         });
-      });
-      
-      // Sort by frequency and return top 100
-      const result = Object.entries(wordFreq)
-        .sort(([,a], [,b]) => b - a)
-        .slice(0, 100)
-        .map(([word]) => word);
+
+        const response = completion.choices[0].message.content;
+        console.log('OpenAI trending keywords response:', response);
         
-      resolve(result);
+        const parsed = JSON.parse(response);
+        const selectedKeywords = parsed.keywords;
+        
+        if (Array.isArray(selectedKeywords)) {
+          console.log(`Selected trending keywords: ${selectedKeywords.join(', ')}`);
+          resolve(selectedKeywords);
+        } else {
+          throw new Error('Response keywords is not an array');
+        }
+      } catch (error) {
+        console.error('Error getting trending keywords from OpenAI:', error);
+        // Fallback: return first 5 unique keywords
+        const uniqueKeywords = [...new Set(keywords)].slice(0, 5);
+        resolve(uniqueKeywords);
+      }
     });
   });
 }
 
-function shouldMakeNewOpenAICall() {
-  if (!lastOpenAICallDate) {
-    return true;
-  }
-  
-  const now = new Date();
-  const lastCallDate = new Date(lastOpenAICallDate);
-  
-  // Check if last call was made before today's midnight
-  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  
-  return lastCallDate < todayMidnight;
-}
-
-async function getTrendingKeywords(limit = 5) {
+async function loadKeywordsCache() {
   try {
-    // Check if keyword caching is disabled
-    if (!settings.isKeywordCachingEnabled()) {
-      console.log('Keyword caching is disabled, forcing fresh analysis');
-      // Skip cache and force fresh analysis
-    } else {
-      // Check if we have cached keywords and don't need a new OpenAI call
-      if (!shouldMakeNewOpenAICall() && cachedTrendingKeywords.length >= limit) {
-        console.log('Using cached trending keywords from today');
-        return cachedTrendingKeywords.slice(0, limit);
-      }
+    if (fs.existsSync(KEYWORDS_CACHE_FILE)) {
+      const cacheData = JSON.parse(fs.readFileSync(KEYWORDS_CACHE_FILE, 'utf8'));
+      return cacheData;
     }
-    
-    // Get the top 100 most frequent words from today
-    const top100Words = await getTop100Keywords();
-    
-    if (top100Words.length === 0) {
-      console.log('No keywords found for today');
-      return [];
-    }
-    
-    // If OpenAI is not configured, fall back to simple frequency-based selection
-    if (!openai || !process.env.OPENAI_API_KEY) {
-      console.log('OpenAI not configured, using frequency-based trending keywords');
-      const fallbackKeywords = top100Words.slice(0, limit);
-      
-      // Cache the fallback keywords only if caching is enabled
-      if (settings.isKeywordCachingEnabled()) {
-        cachedTrendingKeywords = fallbackKeywords;
-        lastOpenAICallDate = new Date().toISOString();
-        saveMetadata();
-      }
-      
-      return fallbackKeywords;
-    }
-    
-    console.log(`Making new OpenAI call to select ${limit} most newsworthy nouns from ${top100Words.length} frequent words`);
-    
-    // Ask GPT-4o-mini to select the most newsworthy nouns
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "You are an expert news analyst. You will be given a list of the most frequent words from Dutch news articles published today. Your task is to select the 5 most newsworthy NOUNS that are likely to be trending topics or important news subjects. Focus on proper,significant nouns (names, places, organizations, events) that are not mentioned in news every day and are related to current events. Exclude generic words."
-        },
-        {
-          role: "user",
-          content: `From this list of the 100 most frequent in Dutch news today, select the ${limit} most newsworthy nouns that represent important trending topics:\n\n${top100Words.join(', ')}\n\nReturn only a JSON array of the selected words, like: ["word1", "word2", "word3", "word4", "word5"], no other context.`
-        }
-      ],
-      temperature: 0.3,
-      max_tokens: 200
-    });
-    
-    const response = completion.choices[0].message.content.trim();
-    console.log('GPT-4o-mini response:', response);
-    
-    // Parse the JSON response
-    try {
-      const selectedWords = JSON.parse(response);
-      if (Array.isArray(selectedWords)) {
-        console.log(`GPT-4o-mini selected: ${selectedWords.join(', ')}`);
-        
-        // Cache the successful response only if caching is enabled
-        if (settings.isKeywordCachingEnabled()) {
-          cachedTrendingKeywords = selectedWords;
-          lastOpenAICallDate = new Date().toISOString();
-          saveMetadata();
-        }
-        
-        return selectedWords.slice(0, limit);
-      } else {
-        throw new Error('Response is not an array');
-      }
-    } catch (parseError) {
-      console.error('Error parsing GPT-4o-mini response:', parseError);
-      console.log('Falling back to frequency-based selection');
-      const fallbackKeywords = top100Words.slice(0, limit);
-      
-      // Cache the fallback keywords only if caching is enabled
-      if (settings.isKeywordCachingEnabled()) {
-        cachedTrendingKeywords = fallbackKeywords;
-        lastOpenAICallDate = new Date().toISOString();
-        saveMetadata();
-      }
-      
-      return fallbackKeywords;
-    }
-    
   } catch (error) {
-    console.error('Error in getTrendingKeywords:', error);
-    // Fallback to frequency-based selection
-    const top100Words = await getTop100Keywords();
-    const fallbackKeywords = top100Words.slice(0, limit);
-    
-    // Cache the fallback keywords only if caching is enabled
-    if (settings.isKeywordCachingEnabled()) {
-      cachedTrendingKeywords = fallbackKeywords;
-      lastOpenAICallDate = new Date().toISOString();
-      saveMetadata();
-    }
-    
-    return fallbackKeywords;
+    console.error('Error loading keywords cache:', error);
+  }
+  return null;
+}
+
+function saveKeywordsCache(keywords, articles) {
+  try {
+    const cacheData = {
+      timestamp: new Date().toISOString(),
+      keywords: keywords,
+      articles: articles
+    };
+    fs.writeFileSync(KEYWORDS_CACHE_FILE, JSON.stringify(cacheData, null, 2));
+    console.log('Keywords cache saved successfully');
+  } catch (error) {
+    console.error('Error saving keywords cache:', error);
   }
 }
 
-function findMostRelevantArticleForKeyword(keyword) {
-  return new Promise((resolve, reject) => {
-    // Get articles from today
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    const sql = `
-      SELECT * FROM articles 
-      WHERE datetime(pubDate) >= datetime(?) 
-      AND (title LIKE ? OR content LIKE ?)
-      ORDER BY 
-        CASE WHEN region = 'Landelijk' THEN 1 ELSE 0 END DESC,
-        datetime(pubDate) DESC
-    `;
-    
-    const keywordPattern = `%${keyword}%`;
-    
-    db.all(sql, [today.toISOString(), keywordPattern, keywordPattern], (err, rows) => {
-      if (err) {
-        console.error('Error finding relevant article:', err);
-        reject(err);
-        return;
-      }
-      
-      if (rows.length === 0) {
-        resolve(null);
-        return;
-      }
-      
-      // Return the most relevant article (first in the ordered results)
-      resolve(rows[0]);
-    });
-  });
+function isCacheValid(cacheData) {
+  if (!cacheData || !cacheData.timestamp) {
+    return false;
+  }
+  
+  const currentSettings = settings.getSettings();
+  const cacheIntervalMinutes = currentSettings.rssCacheIntervalMinutes || 60;
+  const cacheTimestamp = new Date(cacheData.timestamp);
+  const now = new Date();
+  const diffMinutes = (now - cacheTimestamp) / (1000 * 60);
+  
+  return diffMinutes < cacheIntervalMinutes;
 }
 
 async function getTrendingArticles() {
-  const trendingKeywords = await getTrendingKeywords();
+  console.log('Getting trending articles and keywords');
+  
+  // Check if we have valid cached data (respecting RSS cache interval)
+  const cachedData = await loadKeywordsCache();
+  if (cachedData && isCacheValid(cachedData)) {
+    console.log('Using cached trending keywords and articles');
+    return cachedData.articles || [];
+  }
+  
+  // Generate new trending keywords and articles
+  console.log('Generating new trending keywords and articles');
+  const trendingKeywords = await generateTrendingKeywords();
   const trendingArticles = [];
   
   for (const keyword of trendingKeywords) {
-    const article = await findMostRelevantArticleForKeyword(keyword);
-    if (article) {
-      trendingArticles.push({
-        keyword: keyword,
-        article: article
+    await new Promise((resolve) => {
+      db.get('SELECT * FROM articles WHERE keyword = ? ORDER BY datetime(pubDate) DESC LIMIT 1', [keyword], (err, row) => {
+        if (err) {
+          console.error('Error finding article for keyword:', err);
+        } else if (row) {
+          trendingArticles.push({
+            keyword: keyword,
+            article: row
+          });
+        }
+        resolve();
       });
-    }
+    });
   }
   
+  // Always save to cache (regardless of keywordCachingEnabled setting)
+  saveKeywordsCache(trendingKeywords, trendingArticles);
+  
   return trendingArticles;
+}
+
+async function getTrendingKeywords() {
+  const currentSettings = settings.getSettings();
+  console.log('Getting trending keywords');
+  
+  // Check if we have valid cached data (respecting RSS cache interval)
+  const cachedData = await loadKeywordsCache();
+  if (cachedData && isCacheValid(cachedData)) {
+    console.log('Using cached trending keywords');
+    return cachedData.keywords || [];
+  }
+  
+  // Generate new trending keywords
+  console.log('Generating new trending keywords');
+  const trendingKeywords = await generateTrendingKeywords();
+  const trendingArticles = [];
+  
+  // Also generate articles for caching
+  for (const keyword of trendingKeywords) {
+    await new Promise((resolve) => {
+      db.get('SELECT * FROM articles WHERE keyword = ? ORDER BY datetime(pubDate) DESC LIMIT 1', [keyword], (err, row) => {
+        if (err) {
+          console.error('Error finding article for keyword:', err);
+        } else if (row) {
+          trendingArticles.push({
+            keyword: keyword,
+            article: row
+          });
+        }
+        resolve();
+      });
+    });
+  }
+  
+  // Always save to cache (regardless of keywordCachingEnabled setting)
+  saveKeywordsCache(trendingKeywords, trendingArticles);
+  
+  return trendingKeywords;
 }
 
 async function getStats() {

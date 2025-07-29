@@ -1,4 +1,8 @@
 {
   "rssCacheIntervalMinutes": 60,
-  "keywordCachingEnabled": true
+  "keywordCachingEnabled": true,
+  "openaiPrompts": {
+    "systemPrompt": "Je bent een deskundige nieuwsanalist. Je krijgt een lijst met trefwoorden of korte zinnen die zijn gegenereerd voor Nederlandse nieuwsartikelen uit de afgelopen 24 uur. Jouw taak is om de 5 meest nieuwswaardige en diverse trefwoorden te selecteren die belangrijke trending topics vertegenwoordigen. ",
+    "userPrompt": "Uit deze lijst van trefwoorden uit Nederlandse nieuwsartikelen van de afgelopen 24 uur, selecteer de vijf trefwoorden of korte zinnen die het vaakst voorkomen in de lijst, op de heftigheid van het onderwerp, personen, plaatsen of onderwerpen representeren die momenteel relevant zijn in het Nederlandse nieuws. Sorteer de vijf gekozen zinnen op volgorde van heftig naar minder heftig.\r\n\r\n{words}\r\n\r\nGeef uitsluitend een JSON-array terug van de geselecteerde woorden, zoals: [\"woord1\", \"woord2\", \"woord3\", \"woord4\", \"woord5\"], zonder enige context."
+  }
 }

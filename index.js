@@ -86,6 +86,24 @@ app.get('/admin', requireAuth, (req, res) => {
           <div id="settings-status" style="margin-top: 10px; font-weight: bold;"></div>
         </div>
         
+        <div class="settings-section">
+          <h2>🤖 OpenAI Prompts</h2>
+          <form action="/admin/prompts" method="post">
+            <div class="form-group">
+              <label style="vertical-align: top;">System Prompt:</label>
+              <textarea name="systemPrompt" rows="6" style="width: 600px; padding: 8px; font-family: monospace; font-size: 12px;">${currentSettings.openaiPrompts?.systemPrompt || ''}</textarea>
+              <div style="font-size: 12px; color: #666; margin-top: 5px;">Instructions for the AI about its role and task</div>
+            </div>
+            <div class="form-group">
+              <label style="vertical-align: top;">User Prompt:</label>
+              <textarea name="userPrompt" rows="4" style="width: 600px; padding: 8px; font-family: monospace; font-size: 12px;">${currentSettings.openaiPrompts?.userPrompt || ''}</textarea>
+              <div style="font-size: 12px; color: #666; margin-top: 5px;">Template for the user message. Use {limit} for number of keywords, {words} for word list</div>
+            </div>
+            <button type="submit" class="settings">💾 Update Prompts</button>
+          </form>
+          <div id="prompts-status" style="margin-top: 10px; font-weight: bold;"></div>
+        </div>
+        
         <div style="margin: 20px 0;">
           <button onclick="rescrapeFeeds()" style="background: #0066cc; color: white; padding: 10px 20px; border: none; cursor: pointer; border-radius: 4px;">🔄 Rescrape All Feeds</button>
           <div id="rescrape-status" style="margin-top: 10px; font-weight: bold;"></div>
@@ -231,6 +249,26 @@ app.post('/admin/settings', requireAuth, (req, res) => {
   }
 });
 
+app.post('/admin/prompts', requireAuth, (req, res) => {
+  try {
+    const currentSettings = settings.getSettings();
+    const newSettings = {
+      ...currentSettings,
+      openaiPrompts: {
+        systemPrompt: req.body.systemPrompt || '',
+        userPrompt: req.body.userPrompt || ''
+      }
+    };
+    
+    settings.updateSettings(newSettings);
+    res.redirect('/admin');
+  } catch (error) {
+    res.status(500).send('Error updating prompts: ' + error.message);
+  }
+});
+
+
+// homepage
 app.get('/', async (req, res) => {
   try {
     const query = req.query.q || '';
@@ -247,11 +285,12 @@ app.get('/', async (req, res) => {
     
     let articles;
     let trendingArticles = null;
+    console.error('getting trendy articles');
+    trendingArticles = await db.getTrendingArticles();
     
-    // If no search query and no filters, show trending articles
-    if (!query && !medium && !region && !dateFrom && !dateTo) {
-      trendingArticles = await db.getTrendingArticles();
-      articles = trendingArticles.map(ta => ta.article);
+	// If no search query (or empty query) and no filters, show trending articles
+    if ((!query || query.trim() === '') && !medium && !region && !dateFrom && !dateTo) {
+	  articles = trendingArticles.map(ta => ta.article);
     } else {
       articles = await db.searchArticles(query, filters);
     }
@@ -290,6 +329,38 @@ app.get('/stats', async (req, res) => {
   } catch (error) {
     console.error('Error getting stats:', error);
     res.status(500).json({ error: 'Failed to get stats' });
+  }
+});
+
+app.get('/trending', async (req, res) => {
+  try {
+    const path = require('path');
+    const TRENDING_CACHE_FILE = path.join(__dirname, 'db', 'trending_keywords_cache.json');
+    
+    if (fs.existsSync(TRENDING_CACHE_FILE)) {
+      const cacheData = JSON.parse(fs.readFileSync(TRENDING_CACHE_FILE, 'utf8'));
+      res.json({
+        success: true,
+        timestamp: cacheData.timestamp,
+        keywords: cacheData.keywords || [],
+        articles: cacheData.articles || []
+      });
+    } else {
+      res.json({
+        success: false,
+        error: 'No trending data available',
+        keywords: [],
+        articles: []
+      });
+    }
+  } catch (error) {
+    console.error('Error reading trending cache:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to read trending data',
+      keywords: [],
+      articles: []
+    });
   }
 });
 
@@ -374,10 +445,18 @@ cron.schedule('0 2 * * *', async () => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', async () => {
   console.log(`NL Zoekt server draait op http://localhost:${PORT}`);
   console.log('Import feeds handmatig via: http://localhost:' + PORT + '/import');
   
   console.log('Starting initial import...');
-  importFeeds();
+  await importFeeds();
+  
+  console.log('Initializing trending articles...');
+  try {
+    await db.getTrendingArticles();
+    console.log('Trending articles initialized');
+  } catch (error) {
+    console.error('Error initializing trending articles:', error);
+  }
 });
