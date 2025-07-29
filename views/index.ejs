@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NL Zoekt - Nederlandse Nieuwszoeker</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><a href="/" style="text-decoration: none; color: inherit;">🔍 NL Zoekt</a></h1>
+            <p>Zoek door Nederlandse nieuwsartikelen</p>
+        </header>
+
+        <form class="search-form" method="GET">
+            <div class="search-input">
+                <input type="text" name="q" value="<%= query %>" placeholder="Zoek naar nieuws..." autofocus>
+                <button type="submit">Zoeken</button>
+            </div>
+
+            <div class="filters">
+                <div class="filter-group">
+                    <label for="medium">Medium:</label>
+                    <select name="medium" id="medium">
+                        <option value="">Alle media</option>
+                        <% stats.media.forEach(m => { %>
+                        <option value="<%= m %>" <%= filters.medium === m ? 'selected' : '' %>><%= m %></option>
+                        <% }); %>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="region">Regio:</label>
+                    <select name="region" id="region">
+                        <option value="">Alle regio's</option>
+                        <% stats.regions.forEach(r => { %>
+                        <option value="<%= r %>" <%= filters.region === r ? 'selected' : '' %>><%= r %></option>
+                        <% }); %>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="date_from">Van:</label>
+                    <input type="date" name="date_from" id="date_from" value="<%= filters.dateFrom %>">
+                </div>
+
+                <div class="filter-group">
+                    <label for="date_to">Tot:</label>
+                    <input type="date" name="date_to" id="date_to" value="<%= filters.dateTo %>">
+                </div>
+            </div>
+        </form>
+
+        <div class="stats">
+            <p><%= results %> resultaten gevonden van <%= stats.totalArticles %> artikelen totaal</p>
+        </div>
+
+        <div class="results">
+            <% if (articles.length === 0 && query) { %>
+                <div class="no-results">
+                    <p>Geen artikelen gevonden voor "<%= query %>"</p>
+                </div>
+            <% } else if (articles.length === 0) { %>
+                <div class="no-results">
+                    <p>Nog geen artikelen geladen. <a href="/import">Importeer feeds</a> om te beginnen.</p>
+                </div>
+            <% } else { %>
+                <% if (trendingArticles && trendingArticles.length > 0) { %>
+                    <% trendingArticles.forEach(trendingItem => { %>
+                    <article class="article trending-article">
+                        <div class="trending-keyword-label">
+                            <span class="trending-label">Trending:</span>
+                            <a href="?q=<%= encodeURIComponent(trendingItem.keyword) %>" class="trending-keyword"><%= trendingItem.keyword %></a>
+                        </div>
+                        <div class="article-meta">
+                            <span class="medium"><%= trendingItem.article.medium %></span>
+                            <span class="region"><%= trendingItem.article.region %></span>
+							<span class="article-links"><a href="https://archive.ph/<%= encodeURIComponent(trendingItem.article.link) %>" target="_blank" class="archive-link">📁 Archief</a></span>
+                            <span class="date"><%= new Date(trendingItem.article.pubDate).toLocaleDateString('nl-NL', {day: 'numeric', month: 'long', year: 'numeric'}) %> - <%= new Date(trendingItem.article.pubDate).toLocaleTimeString('nl-NL', {hour: '2-digit', minute: '2-digit'}) %></span>
+                        </div>
+                        <h2><a href="<%= trendingItem.article.link %>" target="_blank"><%= trendingItem.article.title %></a></h2>
+                        <% if (trendingItem.article.content) { %>
+                        <p class="content"><%= trendingItem.article.content.substring(0, 200) %>...</p>
+                        <% } %>
+                    </article>
+                    <% }); %>
+                <% } else { %>
+                    <% articles.forEach(article => { %>
+                    <article class="article">
+                        <div class="article-meta">
+                            <span class="medium"><%= article.medium %></span>
+                            <span class="region"><%= article.region %></span>
+							<span class="article-links"><a href="https://archive.ph/<%= encodeURIComponent(article.link) %>" target="_blank" class="archive-link">📁 Archief</a></span>
+                            <span class="date"><%= new Date(article.pubDate).toLocaleDateString('nl-NL', {day: 'numeric', month: 'long', year: 'numeric'}) %> - <%= new Date(article.pubDate).toLocaleTimeString('nl-NL', {hour: '2-digit', minute: '2-digit'}) %></span>
+                        </div>
+                        <h2><a href="<%= article.link %>" target="_blank"><%= article.title %></a></h2>
+                        <% if (article.content) { %>
+                        <p class="content"><%= article.content.substring(0, 200) %>...</p>
+                        <% } %>
+                    </article>
+                    <% }); %>
+                <% } %>
+            <% } %>
+        </div>
+
+        <footer>
+            <p>
+                <a href="/import">Handmatig importeren</a> | 
+                <a href="/stats">Statistieken</a>
+            </p>
+        </footer>
+    </div>
+</body>
+</html>

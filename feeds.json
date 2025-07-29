@@ -1,0 +1,224 @@
+[
+  {
+    "medium": "NU.nl",
+    "region": "Landelijk",
+    "url": "https://www.nu.nl/rss",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "De Telegraaf",
+    "region": "Landelijk",
+    "url": "https://www.telegraaf.nl/rss",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "AD",
+    "region": "Landelijk",
+    "url": "https://www.ad.nl/home/rss.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "de Volkskrant",
+    "region": "Landelijk",
+    "url": "https://www.volkskrant.nl/voorpagina/rss.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "NRC",
+    "region": "Landelijk",
+    "url": "https://www.nrc.nl/rss",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Trouw",
+    "region": "Landelijk",
+    "url": "https://www.trouw.nl/voorpagina/rss.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "FD",
+    "region": "Landelijk",
+    "url": "https://www.fd.nl/?rss",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "NOS",
+    "region": "Landelijk",
+    "url": "https://feeds.nos.nl/nosnieuwsalgemeen",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "RTL Nieuws",
+    "region": "Landelijk",
+    "url": "https://www.rtl.nl/rss.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Tubantia",
+    "region": "Overijssel",
+    "url": "https://www.tubantia.nl/home/rss.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "PZC",
+    "region": "Zeeland",
+    "url": "https://www.pzc.nl/home/rss.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "ED",
+    "region": "Zuid-Oost-Brabant",
+    "url": "https://www.ed.nl/home/rss.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Het Parool",
+    "region": "Amsterdam",
+    "url": "https://www.parool.nl/voorpagina/rss.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Friesch Dagblad",
+    "region": "Friesland",
+    "url": "https://www.frieschdagblad.nl/api/feed/rss",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Dagblad van het Noorden",
+    "region": "Groningen",
+    "url": "https://www.dvhn.nl/api/feed/rss",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Leeuwarder Courant",
+    "region": "Friesland",
+    "url": "https://www.lc.nl/api/feed/rss",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "De Gelderlander",
+    "region": "Gelderland",
+    "url": "https://www.gelderlander.nl/home/rss.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "De Stentor",
+    "region": "Oost-Nederland",
+    "url": "https://www.destentor.nl/home/rss.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Brabants Dagblad",
+    "region": "Noord-Brabant",
+    "url": "https://www.bd.nl/home/rss.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Noordhollands Dagblad",
+    "region": "Noord-Holland",
+    "url": "https://www.noordhollandsdagblad.nl/rss/",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "De Limburger",
+    "region": "Limburg",
+    "url": "https://www.limburger.nl/rss/",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "OOG TV",
+    "region": "Groningen",
+    "url": "http://oogtv.nl/feed",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Erasmus Magazine",
+    "region": "Zuid-Holland",
+    "url": "https://www.erasmusmagazine.nl/feed",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "DUIC",
+    "region": "Utrecht",
+    "url": "http://duic.nl/feed",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "RTV Utrecht",
+    "region": "Utrecht",
+    "url": "https://www.rtvutrecht.nl/rss/nieuws.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Omroep West",
+    "region": "Zuid-Holland",
+    "url": "https://www.omroepwest.nl/rss/index.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "RTV Rijnmond",
+    "region": "Zuid-Holland",
+    "url": "https://www.rijnmond.nl/rss/index.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "RTV Noord",
+    "region": "Groningen",
+    "url": "https://www.rtvnoord.nl/rss/index.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "NH Nieuws",
+    "region": "Noord-Holland",
+    "url": "https://rss.nhnieuws.nl/rss",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Omroep Brabant",
+    "region": "Noord-Brabant",
+    "url": "https://www.omroepbrabant.nl/rss",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Omroep Gelderland",
+    "region": "Gelderland",
+    "url": "https://www.gld.nl/rss/index.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "RTV Oost",
+    "region": "Overijssel",
+    "url": "https://www.rtvoost.nl/rss/index.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "RTV Drenthe",
+    "region": "Drenthe",
+    "url": "https://www.rtvdrenthe.nl/rss/index.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Omrop Fryslan",
+    "region": "Friesland",
+    "url": "https://www.omropfryslan.nl/rss/index.xml",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Ukrant",
+    "region": "Groningen",
+    "url": "https://ukrant.nl/feed",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Delta",
+    "region": "Zuid-Holland",
+    "url": "https://delta.tudelft.nl/rss",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  },
+  {
+    "medium": "Voxweb",
+    "region": "Gelderland",
+    "url": "https://www.voxweb.nl/feed",
+    "lastScraped": "2025-07-29T08:31:56.987Z"
+  }
+]
