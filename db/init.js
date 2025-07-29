@@ -180,15 +180,92 @@ async function addArticle(article) {
   });
 }
 
+function parseSearchQuery(query) {
+  if (!query) return null;
+  
+  const phrases = [];
+  const words = [];
+  let orMode = false;
+  
+  // Extract quoted phrases first
+  const quotedPhrases = query.match(/"([^"]+)"/g);
+  let remainingQuery = query;
+  
+  if (quotedPhrases) {
+    quotedPhrases.forEach(phrase => {
+      const cleanPhrase = phrase.replace(/"/g, '');
+      phrases.push(cleanPhrase);
+      remainingQuery = remainingQuery.replace(phrase, '');
+    });
+  }
+  
+  // Check for OR operator
+  if (remainingQuery.toUpperCase().includes(' OR ')) {
+    orMode = true;
+    remainingQuery = remainingQuery.replace(/\s+OR\s+/gi, ' ');
+  }
+  
+  // Extract remaining words
+  const remainingWords = remainingQuery.trim().split(/\s+/).filter(word => word.length > 0);
+  words.push(...remainingWords);
+  
+  return {
+    phrases,
+    words,
+    orMode
+  };
+}
+
+function buildSearchCondition(searchQuery) {
+  if (!searchQuery) return { condition: '', params: [] };
+  
+  const { phrases, words, orMode } = searchQuery;
+  const conditions = [];
+  const params = [];
+  
+  // Add phrase conditions (must match exactly)
+  phrases.forEach(phrase => {
+    conditions.push('(LOWER(title) LIKE LOWER(?) OR LOWER(content) LIKE LOWER(?))');
+    const phraseParam = `%${phrase}%`;
+    params.push(phraseParam, phraseParam);
+  });
+  
+  if (words.length > 0) {
+    if (orMode) {
+      // OR mode: any word can match
+      const wordConditions = words.map(() => '(LOWER(title) LIKE LOWER(?) OR LOWER(content) LIKE LOWER(?))');
+      conditions.push(`(${wordConditions.join(' OR ')})`);
+      words.forEach(word => {
+        const wordParam = `%${word}%`;
+        params.push(wordParam, wordParam);
+      });
+    } else {
+      // AND mode: all words must match (default)
+      words.forEach(word => {
+        conditions.push('(LOWER(title) LIKE LOWER(?) OR LOWER(content) LIKE LOWER(?))');
+        const wordParam = `%${word}%`;
+        params.push(wordParam, wordParam);
+      });
+    }
+  }
+  
+  const condition = conditions.length > 0 ? conditions.join(' AND ') : '';
+  return { condition, params };
+}
+
 function searchArticles(query, filters = {}) {
   return new Promise((resolve, reject) => {
     let sql = 'SELECT * FROM articles WHERE 1=1';
     const params = [];
     
     if (query) {
-      sql += ' AND (title LIKE ? OR content LIKE ?)';
-      const searchTerm = `%${query}%`;
-      params.push(searchTerm, searchTerm);
+      const searchQuery = parseSearchQuery(query);
+      const { condition, params: searchParams } = buildSearchCondition(searchQuery);
+      
+      if (condition) {
+        sql += ` AND (${condition})`;
+        params.push(...searchParams);
+      }
     }
     
     if (filters.medium) {
@@ -396,10 +473,28 @@ async function getTrendingArticles() {
     });
   }
   
+  // Archive trending articles automatically
+  await archiveTrendingArticles(trendingArticles);
+  
   // Always save to cache (regardless of keywordCachingEnabled setting)
   saveKeywordsCache(trendingKeywords, trendingArticles);
   
   return trendingArticles;
+}
+
+async function getTrendingArticlesForHomepage() {
+  console.log('Getting trending articles for homepage (no archiving)');
+  
+  // Always check cached data first, regardless of validity
+  const cachedData = await loadKeywordsCache();
+  if (cachedData && cachedData.articles && cachedData.articles.length > 0) {
+    console.log('Using cached trending articles for homepage');
+    return cachedData.articles || [];
+  }
+  
+  // If no cache exists, return empty array to avoid triggering archiving on homepage visits
+  console.log('No cached trending articles available for homepage');
+  return [];
 }
 
 async function getTrendingKeywords() {
@@ -486,11 +581,64 @@ async function getStats() {
   });
 }
 
+// Archive trending articles using archive.today
+async function archiveTrendingArticles(trendingArticles) {
+  console.log('Starting automatic archiving of trending articles...');
+  const domains = ['archive.ph', 'archive.today', 'archive.is', 'archive.vn'];
+  
+  // Archive all articles in parallel for better performance
+  const archivePromises = trendingArticles.map(async (trendingItem, index) => {
+    const url = trendingItem.article.link;
+    console.log(`Archiving trending article: ${url}`);
+    
+    // Add staggered delay to be respectful to the service
+    await new Promise(resolve => setTimeout(resolve, index * 500));
+    
+    try {
+      // Try each archive.today domain until one works
+      let archived = false;
+      for (const domain of domains) {
+        try {
+          const archiveUrl = `https://${domain}?run=1&url=${encodeURIComponent(url)}`;
+          const archiveResponse = await fetch(archiveUrl, {
+            method: 'GET',
+            headers: {
+              'User-Agent': 'NL-Zoekt-Archiver/1.0'
+            },
+            timeout: 15000
+          });
+
+          if (archiveResponse.ok || archiveResponse.status === 302) {
+            console.log(`Successfully submitted ${url} to ${domain} for archiving via GET`);
+            archived = true;
+            break;
+          }
+        } catch (domainError) {
+          console.log(`Failed to archive ${url} with ${domain}:`, domainError.message);
+          continue;
+        }
+      }
+      
+      if (!archived) {
+        console.log(`Failed to archive ${url} with all domains`);
+      }
+      
+    } catch (error) {
+      console.error(`Error archiving ${url}:`, error.message);
+    }
+  });
+  
+  // Wait for all archiving requests to complete
+  await Promise.all(archivePromises);
+  console.log('Finished archiving trending articles');
+}
+
 module.exports = {
   init,
   addArticle,
   searchArticles,
   getStats,
   getTrendingArticles,
+  getTrendingArticlesForHomepage,
   cleanupOldArticles
 };

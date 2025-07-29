@@ -45,152 +45,10 @@ app.get('/admin', requireAuth, (req, res) => {
   try {
     const feeds = JSON.parse(fs.readFileSync(path.join(__dirname, 'feeds.json'), 'utf8'));
     const currentSettings = settings.getSettings();
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Feed Admin</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          .feed { border: 1px solid #ddd; margin: 10px 0; padding: 10px; }
-          .settings-section { border: 2px solid #0066cc; margin: 20px 0; padding: 15px; background: #f8f9fa; }
-          .form-group { margin: 10px 0; }
-          label { display: inline-block; width: 150px; }
-          input, select { width: 300px; padding: 5px; }
-          input[type="checkbox"] { width: auto; }
-          input[type="number"] { width: 100px; }
-          button { padding: 10px 20px; margin: 5px; }
-          .delete { background: #ff4444; color: white; }
-          .add { background: #44aa44; color: white; }
-          .settings { background: #0066cc; color: white; }
-          h2 { color: #0066cc; }
-        </style>
-      </head>
-      <body>
-        <h1>Feed Management</h1>
-        
-        <div class="settings-section">
-          <h2>⚙️ Settings</h2>
-          <form action="/admin/settings" method="post">
-            <div class="form-group">
-              <label>RSS Cache Interval:</label>
-              <input type="number" name="rssCacheIntervalMinutes" value="${currentSettings.rssCacheIntervalMinutes}" min="1" max="1440" required>
-              <span style="font-size: 12px; color: #666;">minutes (default: 60)</span>
-            </div>
-            <div class="form-group">
-              <label>Keyword Caching:</label>
-              <input type="checkbox" name="keywordCachingEnabled" ${currentSettings.keywordCachingEnabled ? 'checked' : ''}>
-              <span style="font-size: 12px; color: #666;">Enable caching of trending keywords (default: enabled)</span>
-            </div>
-            <button type="submit" class="settings">💾 Update Settings</button>
-          </form>
-          <div id="settings-status" style="margin-top: 10px; font-weight: bold;"></div>
-        </div>
-        
-        <div class="settings-section">
-          <h2>🤖 OpenAI Prompts</h2>
-          <form action="/admin/prompts" method="post">
-            <div class="form-group">
-              <label style="vertical-align: top;">System Prompt:</label>
-              <textarea name="systemPrompt" rows="6" style="width: 600px; padding: 8px; font-family: monospace; font-size: 12px;">${currentSettings.openaiPrompts?.systemPrompt || ''}</textarea>
-              <div style="font-size: 12px; color: #666; margin-top: 5px;">Instructions for the AI about its role and task</div>
-            </div>
-            <div class="form-group">
-              <label style="vertical-align: top;">User Prompt:</label>
-              <textarea name="userPrompt" rows="4" style="width: 600px; padding: 8px; font-family: monospace; font-size: 12px;">${currentSettings.openaiPrompts?.userPrompt || ''}</textarea>
-              <div style="font-size: 12px; color: #666; margin-top: 5px;">Template for the user message. Use {limit} for number of keywords, {words} for word list</div>
-            </div>
-            <button type="submit" class="settings">💾 Update Prompts</button>
-          </form>
-          <div id="prompts-status" style="margin-top: 10px; font-weight: bold;"></div>
-        </div>
-        
-        <div style="margin: 20px 0;">
-          <button onclick="rescrapeFeeds()" style="background: #0066cc; color: white; padding: 10px 20px; border: none; cursor: pointer; border-radius: 4px;">🔄 Rescrape All Feeds</button>
-          <div id="rescrape-status" style="margin-top: 10px; font-weight: bold;"></div>
-        </div>
-        
-        <h2>Add New Feed</h2>
-        <form action="/admin/feeds" method="post">
-          <div class="form-group">
-            <label>Medium:</label>
-            <input type="text" name="medium" required>
-          </div>
-          <div class="form-group">
-            <label>Region:</label>
-            <input type="text" name="region" required>
-          </div>
-          <div class="form-group">
-            <label>URL:</label>
-            <input type="url" name="url" placeholder="Leave empty for null">
-          </div>
-          <button type="submit" class="add">Add Feed</button>
-        </form>
-        
-        <h2>Existing Feeds</h2>
-        ${feeds.map((feed, index) => `
-          <div class="feed">
-            <div style="margin-bottom: 10px; color: #666; font-size: 12px;">
-              Last scraped: ${feed.lastScraped ? new Date(feed.lastScraped).toLocaleDateString('nl-NL', {day: 'numeric', month: 'long', year: 'numeric'}) + ' - ' + new Date(feed.lastScraped).toLocaleTimeString('nl-NL', {hour: '2-digit', minute: '2-digit'}) : 'Never'}
-            </div>
-            <form action="/admin/feeds/${index}" method="post" style="display: inline-block;">
-              <input type="hidden" name="_method" value="PUT">
-              <div class="form-group">
-                <label>Medium:</label>
-                <input type="text" name="medium" value="${feed.medium}" required>
-              </div>
-              <div class="form-group">
-                <label>Region:</label>
-                <input type="text" name="region" value="${feed.region}" required>
-              </div>
-              <div class="form-group">
-                <label>URL:</label>
-                <input type="url" name="url" value="${feed.url || ''}" placeholder="Leave empty for null">
-              </div>
-              <button type="submit">Update</button>
-            </form>
-            <form action="/admin/feeds/${index}" method="post" style="display: inline-block;">
-              <input type="hidden" name="_method" value="DELETE">
-              <button type="submit" class="delete" onclick="return confirm('Are you sure?')">Delete</button>
-            </form>
-          </div>
-        `).join('')}
-        
-        <script>
-        async function rescrapeFeeds() {
-          const button = event.target;
-          const status = document.getElementById('rescrape-status');
-          
-          button.disabled = true;
-          button.textContent = '🔄 Rescaping...';
-          status.textContent = 'Starting forced rescrape...';
-          status.style.color = 'blue';
-          
-          try {
-            const response = await fetch('/import?force=true');
-            const result = await response.json();
-            
-            if (result.success) {
-              status.textContent = '✅ ' + result.message;
-              status.style.color = 'green';
-              // Refresh page to show updated lastScraped timestamps
-              setTimeout(() => location.reload(), 2000);
-            } else {
-              status.textContent = '❌ ' + result.message;
-              status.style.color = 'red';
-            }
-          } catch (error) {
-            status.textContent = '❌ Error: ' + error.message;
-            status.style.color = 'red';
-          }
-          
-          button.disabled = false;
-          button.textContent = '🔄 Rescrape All Feeds';
-        }
-        </script>
-      </body>
-      </html>
-    `);
+    res.render('admin', { 
+      feeds: feeds, 
+      currentSettings: currentSettings 
+    });
   } catch (error) {
     res.status(500).send('Error loading feeds: ' + error.message);
   }
@@ -287,7 +145,7 @@ app.get('/', async (req, res) => {
     let articles;
     let trendingArticles = null;
     console.error('getting trendy articles');
-    trendingArticles = await db.getTrendingArticles();
+    trendingArticles = await db.getTrendingArticlesForHomepage();
     
 	// If no search query (or empty query) and no filters, show trending articles
     if ((!query || query.trim() === '') && !medium && !region && !dateFrom && !dateTo) {
@@ -365,28 +223,45 @@ app.get('/trending', async (req, res) => {
   }
 });
 
-// Check if URL is archived in Wayback Machine
+// Check if URL is archived in archive.today
 app.get('/archive/check/:url', async (req, res) => {
   try {
     const url = decodeURIComponent(req.params.url);
-    const checkResponse = await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(url)}`);
-    const checkData = await checkResponse.json();
+    // Try to fetch from archive.today with common domains
+    const domains = ['archive.today', 'archive.is', 'archive.vn', 'archive.ph'];
     
-    if (checkData.archived_snapshots?.closest?.available) {
-      res.json({ 
-        archived: true, 
-        archiveUrl: checkData.archived_snapshots.closest.url 
-      });
-    } else {
-      res.json({ archived: false });
+    for (const domain of domains) {
+      try {
+        const checkResponse = await fetch(`https://${domain}/timemap/json/${encodeURIComponent(url)}`, {
+          headers: { 'User-Agent': 'NL-Zoekt-Archiver/1.0' },
+          timeout: 5000
+        });
+        
+        if (checkResponse.ok) {
+          const checkData = await checkResponse.json();
+          if (checkData && checkData.length > 1) {
+            // Get the most recent archive
+            const latest = checkData[checkData.length - 1];
+            res.json({ 
+              archived: true, 
+              archiveUrl: latest[1] // URL is in second position
+            });
+            return;
+          }
+        }
+      } catch (domainError) {
+        continue; // Try next domain
+      }
     }
+    
+    res.json({ archived: false });
   } catch (error) {
     console.error('Archive check error:', error);
     res.status(500).json({ error: 'Failed to check archive status' });
   }
 });
 
-// Archive URL using Wayback Machine SavePageNow API
+// Archive URL using archive.today API
 app.post('/archive', async (req, res) => {
   try {
     const { url } = req.body;
@@ -394,36 +269,54 @@ app.post('/archive', async (req, res) => {
       return res.status(400).json({ error: 'URL is required' });
     }
 
-    // Use SavePageNow API with proper headers
-    const archiveResponse = await fetch('https://web.archive.org/save/' + encodeURIComponent(url), {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'NL-Zoekt-Archiver/1.0'
-      }
-    });
+    // Try archive.today domains for submission
+    const domains = ['archive.today', 'archive.is', 'archive.vn', 'archive.ph'];
+    
+    for (const domain of domains) {
+      try {
+        const archiveResponse = await fetch(`https://${domain}/submit/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': 'NL-Zoekt-Archiver/1.0'
+          },
+          body: `url=${encodeURIComponent(url)}`
+        });
 
-    if (archiveResponse.ok || archiveResponse.status === 302) {
-      // Wait a moment then check for the archived version
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const checkResponse = await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(url)}`);
-      const checkData = await checkResponse.json();
-      
-      if (checkData.archived_snapshots?.closest?.available) {
-        res.json({ 
-          success: true, 
-          archiveUrl: checkData.archived_snapshots.closest.url 
-        });
-      } else {
-        // Fallback to search URL if specific archive not found
-        res.json({ 
-          success: true, 
-          archiveUrl: `https://web.archive.org/web/*/${url}` 
-        });
+        if (archiveResponse.ok || archiveResponse.status === 302) {
+          // Wait for archive.today to process
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          
+          // Check if archived by trying to get timemap
+          const checkResponse = await fetch(`https://${domain}/timemap/json/${encodeURIComponent(url)}`, {
+            headers: { 'User-Agent': 'NL-Zoekt-Archiver/1.0' }
+          });
+          
+          if (checkResponse.ok) {
+            const checkData = await checkResponse.json();
+            if (checkData && checkData.length > 1) {
+              const latest = checkData[checkData.length - 1];
+              res.json({ 
+                success: true, 
+                archiveUrl: latest[1]
+              });
+              return;
+            }
+          }
+          
+          // Fallback to search URL
+          res.json({ 
+            success: true, 
+            archiveUrl: `https://${domain}/${url}` 
+          });
+          return;
+        }
+      } catch (domainError) {
+        continue; // Try next domain
       }
-    } else {
-      throw new Error(`Archive request failed with status: ${archiveResponse.status}`);
     }
+    
+    throw new Error('All archive.today domains failed');
   } catch (error) {
     console.error('Archive error:', error);
     res.status(500).json({ error: 'Failed to archive URL' });
